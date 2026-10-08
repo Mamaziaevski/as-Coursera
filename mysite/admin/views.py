@@ -3,7 +3,7 @@ from sqladmin import ModelView
 from ..database.models import *
 
 
-class User(ModelView, model=User):
+class UserAdmin(ModelView, model=User):
     name = 'User'
     name_plural = 'Users'
     column_list = (
