@@ -1,0 +1,4 @@
+langchain-core>=1,<2
+langchain-community>=0.4,<1
+langchain-text-splitters>=1,<2
+langchain-ollama>=1,<2

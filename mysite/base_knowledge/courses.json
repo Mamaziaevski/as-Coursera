@@ -1,0 +1,7 @@
+[
+  {"id": 1, "title": "Python для начинающих", "description": "Основы Python, переменные, условия, циклы, функции и небольшой проект.", "level": "beginner", "duration_weeks": 4, "price": 0, "status": "free"},
+  {"id": 2, "title": "FastAPI на Python", "description": "Python: создание API на FastAPI, SQLAlchemy, JWT и проверки прав доступа.", "level": "intermediate", "duration_weeks": 6, "price": 12000, "status": "plus"},
+  {"id": 3, "title": "Django на Python", "description": "Python: Django, модели, Django REST Framework и разработка сайта.", "level": "intermediate", "duration_weeks": 8, "price": 15000, "status": "plus"},
+  {"id": 4, "title": "JavaScript для начинающих", "description": "Основы JavaScript, работа с DOM, события и интерактивные страницы.", "level": "beginner", "duration_weeks": 4, "price": 8000, "status": "plus"},
+  {"id": 5, "title": "Python: анализ данных", "description": "Анализ данных на Python с pandas, таблицами и графиками.", "level": "intermediate", "duration_weeks": 3, "price": 9000, "status": "plus"}
+]

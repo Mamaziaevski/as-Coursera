@@ -1,20 +1,23 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from mysite.config import settings
 from mysite.database.db import get_db
-from mysite.database.model import User,Role
+from mysite.database.model import User
 from ..database.schema import (
     AccessResponseSchema,
     TokenResponseSchema,
     UserCreate,
     UserLoginSchema,
+    UserOutput,
 )
 
 auth_router = APIRouter(prefix="/auth", tags=["Authorization"])
@@ -24,38 +27,45 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Пароль должен занимать не больше 72 байт")
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if len(plain_password.encode("utf-8")) > 72:
+        return False
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_token(subject: str, token_type: str, expires_delta: timedelta) -> str:
+def create_token(user: User, token_type: str, expires_delta: timedelta) -> str:
     payload = {
-        "sub": subject,
+        "sub": str(user.id),
+        "full_name": user.full_name,
+        "role": user.role.value,
+        "jti": str(uuid4()),
         "type": token_type,
         "exp": datetime.now(timezone.utc) + expires_delta,
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user: User) -> str:
     return create_token(
-        str(user_id), "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        user, "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user: User) -> str:
     return create_token(
-        str(user_id), "refresh", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        user, "refresh", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    # Без токена нельзя определить пользователя.
+
     if credentials is None:
         raise HTTPException(
             status_code=401,
@@ -63,16 +73,16 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Твоя функция проверяет подпись, срок и тип токена.
+
     user_id = decode_token(
         credentials.credentials,
         expected_type="access",
     )
 
-    # Получаем пользователя по id из токена.
+
     user = await db.get(User, user_id)
 
-    if user is None or not user.is_active:
+    if user is None:
         raise HTTPException(
             status_code=401,
             detail="Пользователь отсутствует или отключён",
@@ -104,7 +114,7 @@ async def register(
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    email = str(data.email)
+    email = str(data.email).lower()
 
     query = select(User).where(User.email == email)
     existing = (await db.execute(query)).scalars().first()
@@ -117,28 +127,32 @@ async def register(
 
     user = User(
         full_name=data.full_name,
-        email=str(data.email),
+        email=email,
         password=hash_password(data.password),
         role=data.role,
         updated_at=datetime.now(timezone.utc),
     )
 
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Этот email уже зарегистрирован")
     return {"message": "Регистрация успешна"}
 
 
 @auth_router.post("/login/", response_model=TokenResponseSchema)
 async def login(data: UserLoginSchema, db: AsyncSession = Depends(get_db)):
-    query = select(User).where(User.email == str(data.email))
+    query = select(User).where(User.email == str(data.email).lower())
     user = (await db.execute(query)).scalars().first()
     if user is None or not verify_password(data.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user)
     user.refresh_token = refresh_token
     await db.commit()
     return TokenResponseSchema(access_token=access_token, refresh_token=refresh_token)
@@ -155,7 +169,7 @@ async def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token is invalid or revoked",
         )
-    return AccessResponseSchema(access_token=create_access_token(user.id))
+    return AccessResponseSchema(access_token=create_access_token(user))
 
 
 @auth_router.post("/logout/")
@@ -172,3 +186,8 @@ async def logout(
     user.refresh_token = None
     await db.commit()
     return {"message": "Ийгиликтуу чыгып кеттиниз"}
+
+
+@auth_router.get("/me/", response_model=UserOutput)
+async def user_me(current_user: User = Depends(get_current_user)):
+    return current_user

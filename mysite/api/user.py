@@ -66,7 +66,9 @@ async def delete_user(
     if current_user.id != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can delete only your own profile")
     await db.delete(current_user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Пользователь связан с курсами или учебными записями")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
