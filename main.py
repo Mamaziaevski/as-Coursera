@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from mysite.admin.setup import setup_admin
-from mysite.api import auth, user, search
+from mysite.api import auth, user, search, agent
 from mysite.schemas import application, course, category, study_group, enrollment
 
 app = FastAPI()
@@ -15,6 +15,7 @@ app.include_router(study_group.router)
 app.include_router(enrollment.router)
 app.include_router(enrollment.group_router)
 app.include_router(search.router)
+app.include_router(agent.agent_router)
 setup_admin(app)
 
 

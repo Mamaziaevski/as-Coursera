@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mysite.api.auth import get_current_user
 from mysite.database.db import get_db
 from mysite.database.model import User
-from agent_style.schemas.agent_schema import AgentInputSchema, AgentOutputSchema
-from agent_style.chains.agent_chain import run_agent
-from agent_style.chains.agent_tools import tool_schemas
+from mysite.schemas.agent_schema import AgentInputSchema, AgentOutputSchema
+from mysite.chains.agent_chain import run_agent
+from mysite.chains.agent_tools import tool_schemas
 
 
 agent_router = APIRouter(prefix='/agent', tags=['AI Agent'])

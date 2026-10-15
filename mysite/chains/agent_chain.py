@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mysite.config import settings
 from mysite.database.model import User
-from agent_style.schemas.agent_schema import AgentOutputSchema
-from agent_style.chains.agent_tools import execute_tool, get_tools
+from mysite.schemas.agent_schema import AgentOutputSchema
+from mysite.chains.agent_tools import execute_tool, get_tools
+from mysite.chains.agent_language import get_answer_language, profile_answer, action_answer
 
 
 # Правила помощника, данные профиля не являются командами.
@@ -58,16 +59,20 @@ async def ask_ollama(client: httpx.AsyncClient, messages: list[dict], tools: lis
 
 # Выбор инструмента, выполнение и ответ клиенту.
 async def run_agent(message: str, db: AsyncSession, current_user: User | None, allowed: list[str]) -> AgentOutputSchema:
+    language = get_answer_language(message)
+    profile = None
     # Дополнительная проверка явного чужого ID в текстовом запросе профиля.
     # Основное ограничение доступа всё равно обеспечивают инструменты без user_id.
     if current_user is not None and re.search(r"профил|аккаунт|пользоват", message, re.IGNORECASE):
         requested_ids = re.findall(r"\bid\s*[:=]?\s*(\d+)\b", message, re.IGNORECASE)
         if any(int(value) != current_user.id for value in requested_ids):
-            return AgentOutputSchema(answer="Я могу получить только профиль пользователя, авторизованного в текущем запросе.")
+            refusal = "Учурдагы суроо-талапта авторизацияланган колдонуучунун гана профилин көрсөтө алам." if language == "ky" else "Я могу получить только профиль пользователя, авторизованного в текущем запросе."
+            return AgentOutputSchema(answer=refusal)
     messages = [
         {"role": "system", "content": agent_prompt},
         {"role": "user", "content": message},
     ]
+    messages[0]["content"] += "\nЖоопту кыргызча гана бер." if language == "ky" else "\nОтветь только на русском языке."
     if current_user is None:
         messages[0]["content"] += "\nТы в режиме регистрации. Профили читать, менять и удалять нельзя."
     available = list(allowed)
@@ -82,11 +87,15 @@ async def run_agent(message: str, db: AsyncSession, current_user: User | None, a
                 if not isinstance(calls, list) or len(calls) > 4:
                     raise HTTPException(status_code=502, detail="Некорректный список инструментов")
                 if not calls:
+                    if profile is not None:
+                        formatted = profile_answer(profile, message, language)
+                        if formatted is not None:
+                            return AgentOutputSchema(answer=formatted)
                     answer = reply.get("content", "")
                     if not isinstance(answer, str) or not answer.strip():
                         raise HTTPException(status_code=502, detail="Модель вернула пустой ответ")
                     if not tool_used:
-                        answer = "Действия с базой не выполнялись. " + answer
+                        answer = ("Маалымат базасында эч кандай аракет аткарылган жок. " if language == "ky" else "Действия с базой не выполнялись. ") + answer
                     return AgentOutputSchema(answer=answer.strip())
                 messages.append(reply)
                 for call in calls:
@@ -100,6 +109,8 @@ async def run_agent(message: str, db: AsyncSession, current_user: User | None, a
                     if mutation_done:
                         raise HTTPException(status_code=422, detail="Отправляй изменение, удаление и регистрацию отдельными сообщениями")
                     result = await execute_tool(name, arguments, db, current_user, available)
+                    if name == "get_my_profile":
+                        profile = result["profile"]
                     tool_used = True
                     mutation_done = name != "get_my_profile"
                     messages.append({"role": "tool", "tool_name": name, "content": json.dumps(result, ensure_ascii=False)})
@@ -107,7 +118,7 @@ async def run_agent(message: str, db: AsyncSession, current_user: User | None, a
                     # Подтверждение операции возвращает сервер, а не модель.
                     # Не ждём ещё одну генерацию с открытой транзакцией записи.
                     await db.commit()
-                    return AgentOutputSchema(answer=result["message"])
+                    return AgentOutputSchema(answer=action_answer(name, language))
         raise HTTPException(status_code=502, detail="Агент превысил лимит шагов")
     except IntegrityError:
         await db.rollback()

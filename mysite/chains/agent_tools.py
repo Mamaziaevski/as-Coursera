@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mysite.api.auth import hash_password
 from mysite.database.model import Application, Course, Enrollment, Role, StudyGroup, User
 from mysite.database.schema import UserOutput, UserUpdate
-from agent_style.schemas.agent_schema import EmptyToolSchema, UserRegisterInputSchema, UserUpdateInputSchema
+from mysite.schemas.agent_schema import EmptyToolSchema, UserRegisterInputSchema, UserUpdateInputSchema
 
 
 # Схема аргументов каждого инструмента.

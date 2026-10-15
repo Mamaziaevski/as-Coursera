@@ -1,5 +1,7 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from mysite.schemas.answer_format import single_line_answer
 
 
 # Входной текст из Postman.
@@ -11,6 +13,11 @@ class AgentInputSchema(BaseModel):
 # Текстовый ответ агента.
 class AgentOutputSchema(BaseModel):
     answer: str
+
+    @field_validator('answer')
+    @classmethod
+    def format_answer(cls, value: str) -> str:
+        return single_line_answer(value)
 
 
 # Чтение и удаление не принимают user_id.
@@ -36,3 +43,4 @@ class UserUpdateInputSchema(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=50)
     email: EmailStr | None = Field(default=None, max_length=100)
     password: str | None = Field(default=None, min_length=8, max_length=72)
+
